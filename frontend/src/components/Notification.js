@@ -1,61 +1,29 @@
-/**
- * Notification Component
- * Toast notification for user feedback
- */
-
 import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import './Notification.css';
 
-// Notification type configurations
-const NOTIFICATION_CONFIG = {
-  success: {
-    icon: '✅',
-    className: 'notification-success'
-  },
-  error: {
-    icon: '❌',
-    className: 'notification-error'
-  },
-  warning: {
-    icon: '⚠️',
-    className: 'notification-warning'
-  },
-  info: {
-    icon: 'ℹ️',
-    className: 'notification-info'
-  }
-};
-
-function Notification({ type = 'info', message, onDismiss }) {
-  const config = NOTIFICATION_CONFIG[type] || NOTIFICATION_CONFIG.info;
-
-  // Auto-dismiss after 4 seconds
+function Notification({ type, message, onDismiss }) {
   useEffect(() => {
-    const timer = setTimeout(() => {
-      onDismiss?.();
-    }, 4000);
-
+    const timer = setTimeout(onDismiss, 4000);
     return () => clearTimeout(timer);
   }, [onDismiss]);
 
+  const colors = {
+    success: '#10b981',
+    error: '#ef4444',
+    warning: '#f59e0b',
+    info: '#3b82f6'
+  };
+
   return (
     <motion.div
-      className={`notification ${config.className}`}
-      initial={{ opacity: 0, y: -20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -20, scale: 0.95 }}
-      transition={{ duration: 0.3, type: 'spring', stiffness: 300 }}
+      className="notification"
+      style={{ backgroundColor: colors[type] || colors.info }}
+      initial={{ opacity: 0, y: -50, x: '-50%' }}
+      animate={{ opacity: 1, y: 0, x: '-50%' }}
+      exit={{ opacity: 0, y: -50, x: '-50%' }}
     >
-      <span className="notification-icon">{config.icon}</span>
-      <span className="notification-message">{message}</span>
-      <button
-        className="notification-dismiss"
-        onClick={onDismiss}
-        aria-label="Dismiss notification"
-      >
-        ✕
-      </button>
+      <span>{message}</span>
+      <button onClick={onDismiss}>&times;</button>
     </motion.div>
   );
 }

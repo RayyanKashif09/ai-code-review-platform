@@ -2,7 +2,7 @@
 AI Smart Code Review Platform - Flask Backend
 ==============================================
 This Flask API provides the /analyze endpoint for code review.
-It uses OpenAI's GPT model to analyze code and provide feedback.
+It uses Groq AI (FREE) to analyze code and provide feedback.
 """
 
 from flask import Flask, request, jsonify
@@ -19,8 +19,11 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
 
-# Configure OpenAI API Client
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+# Configure Groq API Client (uses OpenAI-compatible API)
+client = OpenAI(
+    api_key=os.getenv('GROQ_API_KEY'),
+    base_url="https://api.groq.com/openai/v1"
+)
 
 # AI Prompt Template for Code Analysis
 CODE_ANALYSIS_PROMPT = """You are an expert code reviewer and software engineer. Analyze the following {language} code and provide a comprehensive review.
@@ -117,14 +120,14 @@ def parse_ai_response(response_text):
 
 def analyze_code_with_ai(code, language):
     """
-    Send code to OpenAI API for analysis.
+    Send code to Groq API for analysis.
     Returns structured review data.
     """
     prompt = CODE_ANALYSIS_PROMPT.format(language=language, code=code)
 
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",  # Using GPT-3.5-turbo (cheaper option)
+            model="llama-3.3-70b-versatile",
             messages=[
                 {
                     "role": "system",
@@ -135,7 +138,7 @@ def analyze_code_with_ai(code, language):
                     "content": prompt
                 }
             ],
-            temperature=0.3,  # Lower temperature for more consistent results
+            temperature=0.3,
             max_tokens=2000
         )
 
@@ -151,7 +154,7 @@ def health_check():
     """Health check endpoint to verify API is running."""
     return jsonify({
         "status": "healthy",
-        "message": "AI Code Review API is running"
+        "message": "AI Code Review API is running (Powered by Groq)"
     })
 
 
@@ -205,10 +208,10 @@ def analyze_code():
             language = 'python'  # Default to Python
 
         # Check if API key is configured
-        if not os.getenv('OPENAI_API_KEY'):
+        if not os.getenv('GROQ_API_KEY'):
             return jsonify({
                 "success": False,
-                "error": "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."
+                "error": "Groq API key not configured. Please set GROQ_API_KEY environment variable."
             }), 500
 
         # Analyze code with AI
@@ -250,11 +253,11 @@ if __name__ == '__main__':
     print(f"""
     ==============================================
          AI Smart Code Review Platform API
-    
+
          Running on: http://localhost:{port}
          Debug Mode: {debug}
+         AI Model: Groq Llama 3.3 70B (FREE)
     ==============================================
     """)
 
     app.run(host='0.0.0.0', port=port, debug=debug)
-
