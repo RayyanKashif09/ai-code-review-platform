@@ -1,7 +1,9 @@
 import React, { useState, useCallback } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import WelcomePage from './components/WelcomePage';
+import AuthPage from './components/AuthPage';
 import Header from './components/Header';
 import CodeEditor from './components/CodeEditor';
 import ReviewResults from './components/ReviewResults';
@@ -57,18 +59,14 @@ function calculateTotal(items) {
 }`
 };
 
-function App() {
-  const [showWelcome, setShowWelcome] = useState(true);
+// Main App Component with code analysis functionality
+function MainApp({ user, setUser }) {
   const [code, setCode] = useState('');
   const [language, setLanguage] = useState('python');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [notification, setNotification] = useState(null);
-
-  const handleGetStarted = useCallback(() => {
-    setShowWelcome(false);
-  }, []);
 
   const handleAnalyze = useCallback(async () => {
     if (!code.trim()) {
@@ -121,8 +119,9 @@ function App() {
     setNotification(null);
   }, []);
 
-  if (showWelcome) {
-    return <WelcomePage onGetStarted={handleGetStarted} />;
+  // Redirect to welcome if no user
+  if (!user) {
+    return <Navigate to="/welcome" replace />;
   }
 
   return (
@@ -140,7 +139,7 @@ function App() {
         )}
       </AnimatePresence>
 
-      <Header />
+      <Header user={user} />
 
       <main className="main-content">
         <div className="split-layout">
@@ -206,6 +205,50 @@ function App() {
         <p>LogicGuard - Powered by Groq AI</p>
       </footer>
     </div>
+  );
+}
+
+// Welcome Page Wrapper with navigation
+function WelcomePageWrapper() {
+  const navigate = useNavigate();
+
+  const handleGetStarted = useCallback(() => {
+    navigate('/auth');
+  }, [navigate]);
+
+  return <WelcomePage onGetStarted={handleGetStarted} />;
+}
+
+// Auth Page Wrapper with navigation
+function AuthPageWrapper({ setUser }) {
+  const navigate = useNavigate();
+
+  const handleLogin = useCallback((userData) => {
+    setUser(userData);
+    navigate('/app');
+  }, [navigate, setUser]);
+
+  const handleBack = useCallback(() => {
+    navigate('/welcome');
+  }, [navigate]);
+
+  return <AuthPage onLogin={handleLogin} onBack={handleBack} />;
+}
+
+// Root App Component with Router
+function App() {
+  const [user, setUser] = useState(null);
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Navigate to="/welcome" replace />} />
+        <Route path="/welcome" element={<WelcomePageWrapper />} />
+        <Route path="/auth" element={<AuthPageWrapper setUser={setUser} />} />
+        <Route path="/app" element={<MainApp user={user} setUser={setUser} />} />
+        <Route path="*" element={<Navigate to="/welcome" replace />} />
+      </Routes>
+    </Router>
   );
 }
 

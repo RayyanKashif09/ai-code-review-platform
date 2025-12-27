@@ -154,7 +154,44 @@ def health_check():
     """Health check endpoint to verify API is running."""
     return jsonify({
         "status": "healthy",
-        "message": "LogicGuard API is running (Powered by Groq)"
+        "message": "LogicGuard API is running"
+    })
+
+
+@app.route('/api/welcome', methods=['GET'])
+def welcome():
+    """Welcome page API endpoint with app information."""
+    return jsonify({
+        "success": True,
+        "data": {
+            "name": "LogicGuard",
+            "tagline": "AI Code Review & Quality Assessment",
+            "subtitle": "Protecting Code Logic, Quality, and Performance Using Artificial Intelligence",
+            "features": [
+                {
+                    "id": "bug-detection",
+                    "title": "Bug Detection",
+                    "description": "Identify syntax errors, logical bugs, and potential runtime issues"
+                },
+                {
+                    "id": "performance-analysis",
+                    "title": "Performance Analysis",
+                    "description": "Get performance improvement recommendations and optimizations"
+                },
+                {
+                    "id": "security-review",
+                    "title": "Security Review",
+                    "description": "Identify security vulnerabilities and get fixes"
+                },
+                {
+                    "id": "smart-suggestions",
+                    "title": "Smart Suggestions",
+                    "description": "Receive AI-powered code improvement suggestions"
+                }
+            ],
+            "version": "1.0.0",
+            "copyright": "All Copyright Reserved @ LogicGuard 2025"
+        }
     })
 
 
