@@ -1,6 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
+import WelcomePage from './components/WelcomePage';
+import AuthPage from './components/AuthPage';
+import HomePage from './components/HomePage';
 import Header from './components/Header';
 import CodeEditor from './components/CodeEditor';
 import ReviewResults from './components/ReviewResults';
@@ -56,13 +60,32 @@ function calculateTotal(items) {
 }`
 };
 
-function App() {
+// Main App Component with code analysis functionality
+function MainApp({ user, setUser }) {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [code, setCode] = useState('');
   const [language, setLanguage] = useState('python');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [notification, setNotification] = useState(null);
+
+  // Handle OAuth callback - check for user data in URL
+  useEffect(() => {
+    const userParam = searchParams.get('user');
+    if (userParam) {
+      try {
+        const userData = JSON.parse(decodeURIComponent(userParam));
+        setUser(userData);
+        // Clean up URL
+        navigate('/app', { replace: true });
+        setNotification({ type: 'success', message: `Welcome, ${userData.name || userData.email}!` });
+      } catch (e) {
+        console.error('Failed to parse user data:', e);
+      }
+    }
+  }, [searchParams, setUser, navigate]);
 
   const handleAnalyze = useCallback(async () => {
     if (!code.trim()) {
@@ -115,6 +138,12 @@ function App() {
     setNotification(null);
   }, []);
 
+  // Redirect to welcome if no user (but allow OAuth callback with user param)
+  const userParam = searchParams.get('user');
+  if (!user && !userParam) {
+    return <Navigate to="/welcome" replace />;
+  }
+
   return (
     <div className="app">
       <div className="bg-gradient" />
@@ -130,7 +159,7 @@ function App() {
         )}
       </AnimatePresence>
 
-      <Header />
+      <Header user={user} />
 
       <main className="main-content">
         <div className="split-layout">
@@ -193,9 +222,96 @@ function App() {
       </main>
 
       <footer className="footer">
-        <p>AI Smart Code Review Platform - Powered by Groq AI (Free)</p>
+        <p>LogicGuard - Powered by Groq AI</p>
       </footer>
     </div>
+  );
+}
+
+// Welcome Page Wrapper with navigation
+function WelcomePageWrapper() {
+  const navigate = useNavigate();
+
+  const handleGetStarted = useCallback(() => {
+    navigate('/auth');
+  }, [navigate]);
+
+  return <WelcomePage onGetStarted={handleGetStarted} />;
+}
+
+// Auth Page Wrapper with navigation
+function AuthPageWrapper({ setUser }) {
+  const navigate = useNavigate();
+
+  const handleLogin = useCallback((userData) => {
+    setUser(userData);
+    navigate('/home');
+  }, [navigate, setUser]);
+
+  const handleBack = useCallback(() => {
+    navigate('/welcome');
+  }, [navigate]);
+
+  return <AuthPage onLogin={handleLogin} onBack={handleBack} />;
+}
+
+// Home Page Wrapper with OAuth callback handling
+function HomePageWrapper({ user, setUser }) {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Handle OAuth callback - check for user data in URL
+  useEffect(() => {
+    const userParam = searchParams.get('user');
+    if (userParam) {
+      try {
+        const userData = JSON.parse(decodeURIComponent(userParam));
+        setUser(userData);
+        // Clean up URL
+        navigate('/home', { replace: true });
+      } catch (e) {
+        console.error('Failed to parse user data:', e);
+      }
+    }
+  }, [searchParams, setUser, navigate]);
+
+  // Redirect to welcome if no user (but allow OAuth callback with user param)
+  const userParam = searchParams.get('user');
+  if (!user && !userParam) {
+    return <Navigate to="/welcome" replace />;
+  }
+
+  return <HomePage user={user} setUser={setUser} />;
+}
+
+// Root App Component with Router
+function App() {
+  // Initialize user from localStorage to persist across refreshes
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('logicguard_user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+
+  // Persist user to localStorage whenever it changes
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('logicguard_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('logicguard_user');
+    }
+  }, [user]);
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Navigate to="/welcome" replace />} />
+        <Route path="/welcome" element={<WelcomePageWrapper />} />
+        <Route path="/auth" element={<AuthPageWrapper setUser={setUser} />} />
+        <Route path="/home" element={<HomePageWrapper user={user} setUser={setUser} />} />
+        <Route path="/app" element={<MainApp user={user} setUser={setUser} />} />
+        <Route path="*" element={<Navigate to="/welcome" replace />} />
+      </Routes>
+    </Router>
   );
 }
 

@@ -1,8 +1,8 @@
-# AI Smart Code Review Platform
+# LogicGuard
 
-A modern, professional web application that provides AI-powered code review and analysis. Built with React.js frontend and Python Flask backend, powered by GPT-4 for intelligent code analysis.
+A modern, professional web application that provides AI-powered code review and analysis. Built with React.js frontend and Python Flask backend, powered by Groq AI for intelligent code analysis.
 
-![Platform Preview](https://via.placeholder.com/800x400/0a0a0f/3b82f6?text=AI+Code+Review+Platform)
+![Platform Preview](https://via.placeholder.com/800x400/0a0a0f/3b82f6?text=LogicGuard)
 
 ## Features
 
