@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
+import WelcomePage from './components/WelcomePage';
 import Header from './components/Header';
 import CodeEditor from './components/CodeEditor';
 import ReviewResults from './components/ReviewResults';
@@ -57,12 +58,17 @@ function calculateTotal(items) {
 };
 
 function App() {
+  const [showWelcome, setShowWelcome] = useState(true);
   const [code, setCode] = useState('');
   const [language, setLanguage] = useState('python');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [notification, setNotification] = useState(null);
+
+  const handleGetStarted = useCallback(() => {
+    setShowWelcome(false);
+  }, []);
 
   const handleAnalyze = useCallback(async () => {
     if (!code.trim()) {
@@ -114,6 +120,10 @@ function App() {
   const dismissNotification = useCallback(() => {
     setNotification(null);
   }, []);
+
+  if (showWelcome) {
+    return <WelcomePage onGetStarted={handleGetStarted} />;
+  }
 
   return (
     <div className="app">
@@ -193,7 +203,7 @@ function App() {
       </main>
 
       <footer className="footer">
-        <p>AI Smart Code Review Platform - Powered by Groq AI (Free)</p>
+        <p>LogicGuard - Powered by Groq AI</p>
       </footer>
     </div>
   );

@@ -5,10 +5,10 @@ function Header() {
     <header className="header">
       <div className="header-content">
         <div className="logo">
-          <div className="logo-icon">AI</div>
+          <div className="logo-icon">LG</div>
           <div className="logo-text">
-            <h1>AI Code Review</h1>
-            <span>Smart Analysis Platform</span>
+            <h1>LogicGuard</h1>
+            <span>Smart Code Analysis Platform</span>
           </div>
         </div>
         <div className="header-status">

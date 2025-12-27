@@ -1,6 +1,6 @@
 """
-AI Smart Code Review Platform - Flask Backend
-==============================================
+LogicGuard - Flask Backend
+===========================
 This Flask API provides the /analyze endpoint for code review.
 It uses Groq AI (FREE) to analyze code and provide feedback.
 """
@@ -154,7 +154,7 @@ def health_check():
     """Health check endpoint to verify API is running."""
     return jsonify({
         "status": "healthy",
-        "message": "AI Code Review API is running (Powered by Groq)"
+        "message": "LogicGuard API is running (Powered by Groq)"
     })
 
 
@@ -252,7 +252,7 @@ if __name__ == '__main__':
 
     print(f"""
     ==============================================
-         AI Smart Code Review Platform API
+              LogicGuard API
 
          Running on: http://localhost:{port}
          Debug Mode: {debug}
