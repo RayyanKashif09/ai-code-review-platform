@@ -660,10 +660,12 @@ def logout():
 def get_projects():
     """Get all projects for the current user."""
     user_id = request.args.get('user_id')
+    archived = request.args.get('archived', 'false').lower() == 'true'
+
     if not user_id:
         return jsonify({"success": False, "error": "User ID required"}), 400
 
-    projects = Project.query.filter_by(user_id=user_id).order_by(Project.updated_at.desc()).all()
+    projects = Project.query.filter_by(user_id=user_id, is_archived=archived).order_by(Project.updated_at.desc()).all()
     return jsonify({
         "success": True,
         "data": [p.to_dict() for p in projects]
@@ -704,6 +706,40 @@ def delete_project(project_id):
     db.session.commit()
 
     return jsonify({"success": True, "message": "Project deleted"})
+
+
+@app.route('/api/projects/<int:project_id>/archive', methods=['PUT'])
+def archive_project(project_id):
+    """Archive a project."""
+    project = Project.query.get(project_id)
+    if not project:
+        return jsonify({"success": False, "error": "Project not found"}), 404
+
+    project.is_archived = True
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Project archived",
+        "data": project.to_dict()
+    })
+
+
+@app.route('/api/projects/<int:project_id>/unarchive', methods=['PUT'])
+def unarchive_project(project_id):
+    """Unarchive/restore a project."""
+    project = Project.query.get(project_id)
+    if not project:
+        return jsonify({"success": False, "error": "Project not found"}), 404
+
+    project.is_archived = False
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Project restored",
+        "data": project.to_dict()
+    })
 
 
 # ==================== History Endpoints ====================

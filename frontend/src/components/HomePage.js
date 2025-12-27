@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import NewProjectModal from './NewProjectModal';
 import './HomePage.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -11,9 +12,13 @@ function HomePage({ user, setUser }) {
   const [activeTab, setActiveTab] = useState('home');
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [projects, setProjects] = useState([]);
+  const [archivedProjects, setArchivedProjects] = useState([]);
   const [history, setHistory] = useState([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [isLoadingArchived, setIsLoadingArchived] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState(null);
 
   // Check if user has visited before
   useEffect(() => {
@@ -39,6 +44,24 @@ function HomePage({ user, setUser }) {
       fetchHistory();
     }
   }, [user?.id, activeTab]);
+
+  // Fetch archived projects when archived tab is active
+  useEffect(() => {
+    if (user?.id && activeTab === 'archived') {
+      fetchArchivedProjects();
+    }
+  }, [user?.id, activeTab]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.project-menu-container')) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   const fetchProjects = async () => {
     if (!user?.id) return;
@@ -70,6 +93,87 @@ function HomePage({ user, setUser }) {
     setIsLoadingHistory(false);
   };
 
+  const fetchArchivedProjects = async () => {
+    if (!user?.id) return;
+    setIsLoadingArchived(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects?user_id=${user.id}&archived=true`);
+      const data = await response.json();
+      if (data.success) {
+        setArchivedProjects(data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch archived projects:', error);
+    }
+    setIsLoadingArchived(false);
+  };
+
+  const handleArchiveProject = async (projectId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/archive`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Remove from projects list and add to archived
+        const archivedProject = projects.find(p => p.id === projectId);
+        setProjects(projects.filter(p => p.id !== projectId));
+        if (archivedProject) {
+          setArchivedProjects([{ ...archivedProject, is_archived: true }, ...archivedProjects]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to archive project:', error);
+    }
+    setOpenMenuId(null);
+  };
+
+  const handleUnarchiveProject = async (projectId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/unarchive`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Remove from archived list and add back to projects
+        const unarchivedProject = archivedProjects.find(p => p.id === projectId);
+        setArchivedProjects(archivedProjects.filter(p => p.id !== projectId));
+        if (unarchivedProject) {
+          setProjects([{ ...unarchivedProject, is_archived: false }, ...projects]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to unarchive project:', error);
+    }
+    setOpenMenuId(null);
+  };
+
+  const handleDeleteProject = async (projectId) => {
+    if (!window.confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.success) {
+        setProjects(projects.filter(p => p.id !== projectId));
+        setArchivedProjects(archivedProjects.filter(p => p.id !== projectId));
+      }
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+    }
+    setOpenMenuId(null);
+  };
+
+  const toggleMenu = (e, projectId) => {
+    e.stopPropagation();
+    setOpenMenuId(openMenuId === projectId ? null : projectId);
+  };
+
   // Filter projects based on search query
   const filteredProjects = projects.filter(project =>
     project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -84,6 +188,13 @@ function HomePage({ user, setUser }) {
     item.summary?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Filter archived projects based on search query
+  const filteredArchivedProjects = archivedProjects.filter(project =>
+    project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    project.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    project.language?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const handleLogout = () => {
     setUser(null);
     navigate('/welcome');
@@ -95,7 +206,14 @@ function HomePage({ user, setUser }) {
   };
 
   const handleNewProject = () => {
-    navigate('/app');
+    setShowNewProjectModal(true);
+  };
+
+  const handleProjectCreated = (newProject) => {
+    // Add the new project to the list
+    setProjects([newProject, ...projects]);
+    // Navigate to the app with the project
+    navigate('/app', { state: { project: newProject } });
   };
 
   // Helper function to format date
@@ -203,6 +321,17 @@ function HomePage({ user, setUser }) {
                 <polyline points="12,6 12,12 16,14" />
               </svg>
               History
+            </button>
+            <button
+              className={`navbar-tab ${activeTab === 'archived' ? 'active' : ''}`}
+              onClick={() => setActiveTab('archived')}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="21,8 21,21 3,21 3,8" />
+                <rect x="1" y="3" width="22" height="5" />
+                <line x1="10" y1="12" x2="14" y2="12" />
+              </svg>
+              Archived
             </button>
             <button
               className={`navbar-tab ${activeTab === 'settings' ? 'active' : ''}`}
@@ -372,6 +501,7 @@ function HomePage({ user, setUser }) {
                   key={project.id}
                   className="project-card"
                   whileHover={{ scale: 1.02 }}
+                  onClick={() => navigate('/app', { state: { project } })}
                 >
                   <div className={`project-icon ${project.language || 'python'}`}>
                     {getLanguageIcon(project.language)}
@@ -383,6 +513,52 @@ function HomePage({ user, setUser }) {
                       <span className="stat language">{project.language || 'Python'}</span>
                       <span className="stat analyses">{project.analysis_count || 0} Analyses</span>
                     </div>
+                  </div>
+                  {/* 3-dot menu */}
+                  <div className="project-menu-container">
+                    <button
+                      className="project-menu-btn"
+                      onClick={(e) => toggleMenu(e, project.id)}
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="5" r="2" />
+                        <circle cx="12" cy="12" r="2" />
+                        <circle cx="12" cy="19" r="2" />
+                      </svg>
+                    </button>
+                    {openMenuId === project.id && (
+                      <div className="project-menu-dropdown">
+                        <button
+                          className="menu-item"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleArchiveProject(project.id);
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="21,8 21,21 3,21 3,8" />
+                            <rect x="1" y="3" width="22" height="5" />
+                            <line x1="10" y1="12" x2="14" y2="12" />
+                          </svg>
+                          Archive
+                        </button>
+                        <button
+                          className="menu-item delete"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteProject(project.id);
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3,6 5,6 21,6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <line x1="10" y1="11" x2="10" y2="17" />
+                            <line x1="14" y1="11" x2="14" y2="17" />
+                          </svg>
+                          Delete
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -455,6 +631,118 @@ function HomePage({ user, setUser }) {
               {!isLoadingHistory && history.length === 0 && !searchQuery && (
                 <div className="empty-history-message">
                   <p>No analysis history yet. Start analyzing code to build your history!</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ARCHIVED TAB */}
+        {activeTab === 'archived' && (
+          <motion.div
+            className="tab-content"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="content-header">
+              <h1>Archived Projects</h1>
+              <p>View and restore your archived projects</p>
+            </div>
+
+            {/* Search Results Info */}
+            {searchQuery && (
+              <div className="search-results-info">
+                {filteredArchivedProjects.length === 0 ? (
+                  <p>No archived projects found for "{searchQuery}"</p>
+                ) : (
+                  <p>Found {filteredArchivedProjects.length} archived project{filteredArchivedProjects.length !== 1 ? 's' : ''} matching "{searchQuery}"</p>
+                )}
+              </div>
+            )}
+
+            {/* Loading State */}
+            {isLoadingArchived && (
+              <div className="loading-message">Loading archived projects...</div>
+            )}
+
+            <div className="projects-grid archived-grid">
+              {/* Render filtered archived projects */}
+              {filteredArchivedProjects.map((project) => (
+                <motion.div
+                  key={project.id}
+                  className="project-card archived"
+                  whileHover={{ scale: 1.02 }}
+                >
+                  <div className={`project-icon ${project.language || 'python'}`}>
+                    {getLanguageIcon(project.language)}
+                  </div>
+                  <div className="project-info">
+                    <h3>{project.name}</h3>
+                    <p>{project.description || `Archived: ${formatDate(project.updated_at)}`}</p>
+                    <div className="project-stats">
+                      <span className="stat language">{project.language || 'Python'}</span>
+                      <span className="stat archived-badge">Archived</span>
+                    </div>
+                  </div>
+                  {/* 3-dot menu for archived */}
+                  <div className="project-menu-container">
+                    <button
+                      className="project-menu-btn"
+                      onClick={(e) => toggleMenu(e, project.id)}
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="5" r="2" />
+                        <circle cx="12" cy="12" r="2" />
+                        <circle cx="12" cy="19" r="2" />
+                      </svg>
+                    </button>
+                    {openMenuId === project.id && (
+                      <div className="project-menu-dropdown">
+                        <button
+                          className="menu-item"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUnarchiveProject(project.id);
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17,8 12,3 7,8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                          </svg>
+                          Restore
+                        </button>
+                        <button
+                          className="menu-item delete"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteProject(project.id);
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3,6 5,6 21,6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <line x1="10" y1="11" x2="10" y2="17" />
+                            <line x1="14" y1="11" x2="14" y2="17" />
+                          </svg>
+                          Delete Permanently
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Empty state when no archived projects and not loading */}
+              {!isLoadingArchived && archivedProjects.length === 0 && !searchQuery && (
+                <div className="empty-projects-message">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="21,8 21,21 3,21 3,8" />
+                    <rect x="1" y="3" width="22" height="5" />
+                    <line x1="10" y1="12" x2="14" y2="12" />
+                  </svg>
+                  <p>No archived projects. Projects you archive will appear here.</p>
                 </div>
               )}
             </div>
@@ -543,6 +831,14 @@ function HomePage({ user, setUser }) {
           </motion.div>
         )}
       </main>
+
+      {/* New Project Modal */}
+      <NewProjectModal
+        isOpen={showNewProjectModal}
+        onClose={() => setShowNewProjectModal(false)}
+        onProjectCreated={handleProjectCreated}
+        userId={user?.id}
+      />
     </div>
   );
 }

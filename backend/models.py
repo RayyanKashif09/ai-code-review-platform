@@ -69,6 +69,7 @@ class Project(db.Model):
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     language = db.Column(db.String(50), default='python')
+    is_archived = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -87,6 +88,7 @@ class Project(db.Model):
             'name': self.name,
             'description': self.description,
             'language': self.language,
+            'is_archived': self.is_archived,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'analysis_count': len(self.analyses) if self.analyses else 0

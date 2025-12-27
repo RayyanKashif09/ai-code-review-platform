@@ -31,11 +31,15 @@ CREATE TABLE IF NOT EXISTS projects (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     language VARCHAR(50) DEFAULT 'python',
+    is_archived BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_user_id (user_id)
 );
+
+-- If table already exists, add is_archived column:
+-- ALTER TABLE projects ADD COLUMN is_archived BOOLEAN DEFAULT FALSE AFTER language;
 
 -- Analysis History Table
 CREATE TABLE IF NOT EXISTS analysis_history (

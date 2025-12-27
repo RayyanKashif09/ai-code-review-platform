@@ -5,6 +5,8 @@ import axios from 'axios';
 import WelcomePage from './components/WelcomePage';
 import AuthPage from './components/AuthPage';
 import HomePage from './components/HomePage';
+import CodeAnalysisPage from './components/CodeAnalysisPage';
+import ResultsPage from './components/ResultsPage';
 import Header from './components/Header';
 import CodeEditor from './components/CodeEditor';
 import ReviewResults from './components/ReviewResults';
@@ -284,6 +286,44 @@ function HomePageWrapper({ user, setUser }) {
   return <HomePage user={user} setUser={setUser} />;
 }
 
+// Code Analysis Page Wrapper
+function CodeAnalysisPageWrapper({ user, setUser }) {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Handle OAuth callback - check for user data in URL
+  useEffect(() => {
+    const userParam = searchParams.get('user');
+    if (userParam) {
+      try {
+        const userData = JSON.parse(decodeURIComponent(userParam));
+        setUser(userData);
+        // Clean up URL
+        navigate('/app', { replace: true });
+      } catch (e) {
+        console.error('Failed to parse user data:', e);
+      }
+    }
+  }, [searchParams, setUser, navigate]);
+
+  // Redirect to welcome if no user (but allow OAuth callback with user param)
+  const userParam = searchParams.get('user');
+  if (!user && !userParam) {
+    return <Navigate to="/welcome" replace />;
+  }
+
+  return <CodeAnalysisPage user={user} />;
+}
+
+// Results Page Wrapper
+function ResultsPageWrapper({ user }) {
+  if (!user) {
+    return <Navigate to="/welcome" replace />;
+  }
+
+  return <ResultsPage user={user} />;
+}
+
 // Root App Component with Router
 function App() {
   // Initialize user from localStorage to persist across refreshes
@@ -308,7 +348,8 @@ function App() {
         <Route path="/welcome" element={<WelcomePageWrapper />} />
         <Route path="/auth" element={<AuthPageWrapper setUser={setUser} />} />
         <Route path="/home" element={<HomePageWrapper user={user} setUser={setUser} />} />
-        <Route path="/app" element={<MainApp user={user} setUser={setUser} />} />
+        <Route path="/app" element={<CodeAnalysisPageWrapper user={user} setUser={setUser} />} />
+        <Route path="/results" element={<ResultsPageWrapper user={user} />} />
         <Route path="*" element={<Navigate to="/welcome" replace />} />
       </Routes>
     </Router>
