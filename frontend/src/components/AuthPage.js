@@ -33,33 +33,98 @@ function AuthPage({ onLogin, onBack }) {
     setError('');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+    setIsLoading(true);
 
     if (isSignUp) {
       // Sign Up validation
       if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
         setError('Please fill in all fields');
+        setIsLoading(false);
         return;
       }
       if (formData.password !== formData.confirmPassword) {
         setError('Passwords do not match');
+        setIsLoading(false);
         return;
       }
       if (formData.password.length < 6) {
         setError('Password must be at least 6 characters');
+        setIsLoading(false);
         return;
+      }
+
+      // Call register API
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: formData.name,
+            email: formData.email,
+            password: formData.password,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Registration successful, switch to login mode
+          setIsSignUp(false);
+          setFormData({
+            name: '',
+            email: formData.email, // Keep the email for convenience
+            password: '',
+            confirmPassword: ''
+          });
+          setError(''); // Clear any errors
+          alert('Registration successful! Please login with your credentials.');
+        } else {
+          setError(data.error || 'Registration failed');
+        }
+      } catch (err) {
+        setError('Network error. Please try again.');
       }
     } else {
       // Sign In validation
       if (!formData.email || !formData.password) {
         setError('Please fill in all fields');
+        setIsLoading(false);
         return;
+      }
+
+      // Call login API
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Login successful, call onLogin with user data
+          onLogin(data.user);
+        } else {
+          setError(data.error || 'Login failed');
+        }
+      } catch (err) {
+        setError('Network error. Please try again.');
       }
     }
 
-    // For now, just proceed to the main app
-    onLogin(formData);
+    setIsLoading(false);
   };
 
   const toggleMode = () => {
@@ -202,11 +267,14 @@ function AuthPage({ onLogin, onBack }) {
               className="auth-submit-btn"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
+              disabled={isLoading}
             >
-              {isSignUp ? 'Create Account' : 'Sign In'}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
+              {isLoading ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
+              {!isLoading && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              )}
             </motion.button>
 
             <div className="auth-divider">

@@ -3,6 +3,7 @@ LogicGuard - Flask Backend
 ===========================
 This Flask API provides the /analyze endpoint for code review.
 It uses Groq AI (FREE) to analyze code and provide feedback.
+With MySQL Database Integration for data persistence.
 """
 
 from flask import Flask, request, jsonify, redirect, session
@@ -12,8 +13,10 @@ import json
 import re
 import requests
 import urllib.parse
+from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
+from models import db, User, Project, AnalysisHistory, UserSettings
 
 # Load environment variables
 load_dotenv()
@@ -21,6 +24,24 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'logicguard-secret-key-2025')
 CORS(app, supports_credentials=True, origins=['http://localhost:3000'])
+
+# Database Configuration
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = os.getenv('DB_PORT', '3306')
+DB_NAME = os.getenv('DB_NAME', 'logicguard')
+DB_USER = os.getenv('DB_USER', 'root')
+DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+
+# URL encode the password to handle special characters like @
+DB_PASSWORD_ENCODED = urllib.parse.quote_plus(DB_PASSWORD)
+
+# Configure SQLAlchemy
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD_ENCODED}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ECHO'] = False
+
+# Initialize database
+db.init_app(app)
 
 # OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
@@ -160,12 +181,43 @@ def analyze_code_with_ai(code, language):
         raise Exception(f"Error analyzing code: {str(e)}")
 
 
+def get_or_create_user(provider_id, provider, email, name, picture):
+    """Get existing user or create new one in database"""
+    user = User.query.filter_by(provider=provider, provider_id=provider_id).first()
+
+    if user:
+        # Update last login
+        user.last_login = datetime.utcnow()
+        user.name = name
+        user.picture = picture
+        db.session.commit()
+    else:
+        # Create new user
+        user = User(
+            provider_id=provider_id,
+            provider=provider,
+            email=email,
+            name=name,
+            picture=picture
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        # Create default settings for new user
+        settings = UserSettings(user_id=user.id)
+        db.session.add(settings)
+        db.session.commit()
+
+    return user
+
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint to verify API is running."""
     return jsonify({
         "status": "healthy",
-        "message": "LogicGuard API is running"
+        "message": "LogicGuard API is running",
+        "database": "connected"
     })
 
 
@@ -210,25 +262,7 @@ def welcome():
 def analyze_code():
     """
     Main endpoint for code analysis.
-
-    Request Body:
-    {
-        "code": "string - the source code to analyze",
-        "language": "string - programming language (python, javascript, java, cpp)"
-    }
-
-    Returns:
-    {
-        "success": boolean,
-        "data": {
-            "score": number,
-            "summary": string,
-            "bugs": array,
-            "optimizations": array,
-            "positives": array,
-            "metrics": object
-        }
-    }
+    Saves analysis to database if user is logged in.
     """
     try:
         # Get request data
@@ -242,6 +276,8 @@ def analyze_code():
 
         code = data.get('code', '').strip()
         language = data.get('language', 'python').lower()
+        user_id = data.get('user_id')  # Optional: to save to history
+        project_id = data.get('project_id')  # Optional: to associate with project
 
         # Validate input
         if not code:
@@ -264,6 +300,28 @@ def analyze_code():
 
         # Analyze code with AI
         result = analyze_code_with_ai(code, language)
+
+        # Save to database if user_id provided
+        if user_id:
+            try:
+                analysis = AnalysisHistory(
+                    user_id=user_id,
+                    project_id=project_id,
+                    code_snippet=code,
+                    language=language,
+                    score=result.get('score'),
+                    summary=result.get('summary'),
+                    bugs=result.get('bugs'),
+                    optimizations=result.get('optimizations'),
+                    positives=result.get('positives'),
+                    metrics=result.get('metrics')
+                )
+                db.session.add(analysis)
+                db.session.commit()
+                result['analysis_id'] = analysis.id
+            except Exception as db_error:
+                print(f"Database error: {db_error}")
+                # Continue even if database save fails
 
         return jsonify({
             "success": True,
@@ -350,9 +408,19 @@ def google_callback():
         )
         user_info = user_response.json()
 
+        # Save user to database
+        db_user = get_or_create_user(
+            provider_id=user_info.get('id'),
+            provider='google',
+            email=user_info.get('email'),
+            name=user_info.get('name'),
+            picture=user_info.get('picture')
+        )
+
         # Store user in session
         session['user'] = {
-            'id': user_info.get('id'),
+            'id': db_user.id,
+            'provider_id': user_info.get('id'),
             'email': user_info.get('email'),
             'name': user_info.get('name'),
             'picture': user_info.get('picture'),
@@ -362,7 +430,7 @@ def google_callback():
         # Redirect to frontend with user data
         user_param = json.dumps(session['user'])
         encoded_user = urllib.parse.quote(user_param)
-        return redirect(f"{FRONTEND_URL}/app?user={encoded_user}")
+        return redirect(f"{FRONTEND_URL}/home?user={encoded_user}")
 
     except Exception as e:
         return redirect(f"{FRONTEND_URL}/auth?error={str(e)}")
@@ -439,9 +507,19 @@ def github_callback():
                 primary_email = next((e for e in emails if e.get('primary')), emails[0])
                 email = primary_email.get('email')
 
+        # Save user to database
+        db_user = get_or_create_user(
+            provider_id=str(user_info.get('id')),
+            provider='github',
+            email=email,
+            name=user_info.get('name') or user_info.get('login'),
+            picture=user_info.get('avatar_url')
+        )
+
         # Store user in session
         session['user'] = {
-            'id': str(user_info.get('id')),
+            'id': db_user.id,
+            'provider_id': str(user_info.get('id')),
             'email': email,
             'name': user_info.get('name') or user_info.get('login'),
             'picture': user_info.get('avatar_url'),
@@ -451,10 +529,113 @@ def github_callback():
         # Redirect to frontend with user data
         user_param = json.dumps(session['user'])
         encoded_user = urllib.parse.quote(user_param)
-        return redirect(f"{FRONTEND_URL}/app?user={encoded_user}")
+        return redirect(f"{FRONTEND_URL}/home?user={encoded_user}")
 
     except Exception as e:
         return redirect(f"{FRONTEND_URL}/auth?error={str(e)}")
+
+
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """Register a new user with email and password."""
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"success": False, "error": "No data provided"}), 400
+
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    name = data.get('name', '').strip()
+
+    # Validate input
+    if not email or not password:
+        return jsonify({"success": False, "error": "Email and password are required"}), 400
+
+    if len(password) < 6:
+        return jsonify({"success": False, "error": "Password must be at least 6 characters"}), 400
+
+    # Check if email already exists
+    existing_user = User.query.filter_by(email=email, provider='email').first()
+    if existing_user:
+        return jsonify({"success": False, "error": "Email already registered"}), 400
+
+    try:
+        # Create new user
+        user = User(
+            provider_id=email,  # Use email as provider_id for email auth
+            provider='email',
+            email=email,
+            name=name or email.split('@')[0]  # Use email prefix as name if not provided
+        )
+        user.set_password(password)
+
+        db.session.add(user)
+        db.session.commit()
+
+        # Create default settings for new user
+        settings = UserSettings(user_id=user.id)
+        db.session.add(settings)
+        db.session.commit()
+
+        # Return user data (without auto-login, user needs to login separately)
+        return jsonify({
+            "success": True,
+            "message": "Registration successful! Please login.",
+            "user": {
+                'id': user.id,
+                'email': user.email,
+                'name': user.name,
+                'provider': 'email'
+            }
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Registration failed: {str(e)}"}), 500
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Login with email and password."""
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"success": False, "error": "No data provided"}), 400
+
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({"success": False, "error": "Email and password are required"}), 400
+
+    # Find user by email
+    user = User.query.filter_by(email=email, provider='email').first()
+
+    if not user:
+        return jsonify({"success": False, "error": "Invalid email or password"}), 401
+
+    if not user.check_password(password):
+        return jsonify({"success": False, "error": "Invalid email or password"}), 401
+
+    # Update last login
+    user.last_login = datetime.utcnow()
+    db.session.commit()
+
+    # Store user in session
+    session['user'] = {
+        'id': user.id,
+        'provider_id': user.provider_id,
+        'email': user.email,
+        'name': user.name,
+        'picture': user.picture,
+        'provider': 'email'
+    }
+
+    return jsonify({
+        "success": True,
+        "message": "Login successful!",
+        "user": session['user']
+    })
 
 
 @app.route('/api/auth/user', methods=['GET'])
@@ -473,7 +654,158 @@ def logout():
     return jsonify({"success": True, "message": "Logged out successfully"})
 
 
+# ==================== Project Endpoints ====================
+
+@app.route('/api/projects', methods=['GET'])
+def get_projects():
+    """Get all projects for the current user."""
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"success": False, "error": "User ID required"}), 400
+
+    projects = Project.query.filter_by(user_id=user_id).order_by(Project.updated_at.desc()).all()
+    return jsonify({
+        "success": True,
+        "data": [p.to_dict() for p in projects]
+    })
+
+
+@app.route('/api/projects', methods=['POST'])
+def create_project():
+    """Create a new project."""
+    data = request.get_json()
+
+    if not data or not data.get('user_id') or not data.get('name'):
+        return jsonify({"success": False, "error": "User ID and project name required"}), 400
+
+    project = Project(
+        user_id=data['user_id'],
+        name=data['name'],
+        description=data.get('description', ''),
+        language=data.get('language', 'python')
+    )
+    db.session.add(project)
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "data": project.to_dict()
+    })
+
+
+@app.route('/api/projects/<int:project_id>', methods=['DELETE'])
+def delete_project(project_id):
+    """Delete a project."""
+    project = Project.query.get(project_id)
+    if not project:
+        return jsonify({"success": False, "error": "Project not found"}), 404
+
+    db.session.delete(project)
+    db.session.commit()
+
+    return jsonify({"success": True, "message": "Project deleted"})
+
+
+# ==================== History Endpoints ====================
+
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    """Get analysis history for the current user."""
+    user_id = request.args.get('user_id')
+    limit = request.args.get('limit', 20, type=int)
+
+    if not user_id:
+        return jsonify({"success": False, "error": "User ID required"}), 400
+
+    history = AnalysisHistory.query.filter_by(user_id=user_id)\
+        .order_by(AnalysisHistory.created_at.desc())\
+        .limit(limit)\
+        .all()
+
+    return jsonify({
+        "success": True,
+        "data": [h.to_dict() for h in history]
+    })
+
+
+@app.route('/api/history/<int:analysis_id>', methods=['GET'])
+def get_analysis_detail(analysis_id):
+    """Get detailed analysis result."""
+    analysis = AnalysisHistory.query.get(analysis_id)
+    if not analysis:
+        return jsonify({"success": False, "error": "Analysis not found"}), 404
+
+    # Return full code snippet for detail view
+    result = analysis.to_dict()
+    result['code_snippet'] = analysis.code_snippet
+
+    return jsonify({
+        "success": True,
+        "data": result
+    })
+
+
+# ==================== Settings Endpoints ====================
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get user settings."""
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"success": False, "error": "User ID required"}), 400
+
+    settings = UserSettings.query.filter_by(user_id=user_id).first()
+    if not settings:
+        # Create default settings
+        settings = UserSettings(user_id=user_id)
+        db.session.add(settings)
+        db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "data": settings.to_dict()
+    })
+
+
+@app.route('/api/settings', methods=['PUT'])
+def update_settings():
+    """Update user settings."""
+    data = request.get_json()
+
+    if not data or not data.get('user_id'):
+        return jsonify({"success": False, "error": "User ID required"}), 400
+
+    settings = UserSettings.query.filter_by(user_id=data['user_id']).first()
+    if not settings:
+        settings = UserSettings(user_id=data['user_id'])
+        db.session.add(settings)
+
+    if 'default_language' in data:
+        settings.default_language = data['default_language']
+    if 'email_notifications' in data:
+        settings.email_notifications = data['email_notifications']
+    if 'theme' in data:
+        settings.theme = data['theme']
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "data": settings.to_dict()
+    })
+
+
 if __name__ == '__main__':
+    # Create tables if they don't exist
+    with app.app_context():
+        try:
+            db.create_all()
+            print("Database tables created/verified successfully!")
+        except Exception as e:
+            print(f"Database connection error: {e}")
+            print("Make sure MySQL is running and the database 'logicguard' exists.")
+            print("Run the database.sql script in MySQL Workbench first!")
+
     # Run the Flask development server
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
@@ -485,6 +817,7 @@ if __name__ == '__main__':
          Running on: http://localhost:{port}
          Debug Mode: {debug}
          AI Model: Groq Llama 3.3 70B (FREE)
+         Database: MySQL (logicguard)
     ==============================================
     """)
 
