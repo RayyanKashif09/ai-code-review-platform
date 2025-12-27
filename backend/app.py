@@ -1,6 +1,6 @@
 """
-AI Smart Code Review Platform - Flask Backend
-==============================================
+LogicGuard - Flask Backend
+===========================
 This Flask API provides the /analyze endpoint for code review.
 It uses Groq AI (FREE) to analyze code and provide feedback.
 """
@@ -154,7 +154,44 @@ def health_check():
     """Health check endpoint to verify API is running."""
     return jsonify({
         "status": "healthy",
-        "message": "AI Code Review API is running (Powered by Groq)"
+        "message": "LogicGuard API is running"
+    })
+
+
+@app.route('/api/welcome', methods=['GET'])
+def welcome():
+    """Welcome page API endpoint with app information."""
+    return jsonify({
+        "success": True,
+        "data": {
+            "name": "LogicGuard",
+            "tagline": "AI Code Review & Quality Assessment",
+            "subtitle": "Protecting Code Logic, Quality, and Performance Using Artificial Intelligence",
+            "features": [
+                {
+                    "id": "bug-detection",
+                    "title": "Bug Detection",
+                    "description": "Identify syntax errors, logical bugs, and potential runtime issues"
+                },
+                {
+                    "id": "performance-analysis",
+                    "title": "Performance Analysis",
+                    "description": "Get performance improvement recommendations and optimizations"
+                },
+                {
+                    "id": "security-review",
+                    "title": "Security Review",
+                    "description": "Identify security vulnerabilities and get fixes"
+                },
+                {
+                    "id": "smart-suggestions",
+                    "title": "Smart Suggestions",
+                    "description": "Receive AI-powered code improvement suggestions"
+                }
+            ],
+            "version": "1.0.0",
+            "copyright": "All Copyright Reserved @ LogicGuard 2025"
+        }
     })
 
 
@@ -252,7 +289,7 @@ if __name__ == '__main__':
 
     print(f"""
     ==============================================
-         AI Smart Code Review Platform API
+              LogicGuard API
 
          Running on: http://localhost:{port}
          Debug Mode: {debug}
