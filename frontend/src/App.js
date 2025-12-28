@@ -7,6 +7,7 @@ import AuthPage from './components/AuthPage';
 import HomePage from './components/HomePage';
 import CodeAnalysisPage from './components/CodeAnalysisPage';
 import ResultsPage from './components/ResultsPage';
+import ProjectDetailPage from './components/ProjectDetailPage';
 import Header from './components/Header';
 import CodeEditor from './components/CodeEditor';
 import ReviewResults from './components/ReviewResults';
@@ -277,10 +278,10 @@ function HomePageWrapper({ user, setUser }) {
     }
   }, [searchParams, setUser, navigate]);
 
-  // Redirect to welcome if no user (but allow OAuth callback with user param)
+  // Redirect to auth if no user (but allow OAuth callback with user param)
   const userParam = searchParams.get('user');
   if (!user && !userParam) {
-    return <Navigate to="/welcome" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   return <HomePage user={user} setUser={setUser} />;
@@ -306,10 +307,10 @@ function CodeAnalysisPageWrapper({ user, setUser }) {
     }
   }, [searchParams, setUser, navigate]);
 
-  // Redirect to welcome if no user (but allow OAuth callback with user param)
+  // Redirect to auth if no user (but allow OAuth callback with user param)
   const userParam = searchParams.get('user');
   if (!user && !userParam) {
-    return <Navigate to="/welcome" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   return <CodeAnalysisPage user={user} />;
@@ -318,10 +319,27 @@ function CodeAnalysisPageWrapper({ user, setUser }) {
 // Results Page Wrapper
 function ResultsPageWrapper({ user }) {
   if (!user) {
-    return <Navigate to="/welcome" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   return <ResultsPage user={user} />;
+}
+
+// Project Detail Page Wrapper
+function ProjectDetailPageWrapper({ user }) {
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  return <ProjectDetailPage user={user} />;
+}
+
+// Smart redirect component that checks if user is logged in
+function SmartRedirect({ user }) {
+  if (user) {
+    return <Navigate to="/home" replace />;
+  }
+  return <Navigate to="/welcome" replace />;
 }
 
 // Root App Component with Router
@@ -344,13 +362,14 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Navigate to="/welcome" replace />} />
+        <Route path="/" element={<SmartRedirect user={user} />} />
         <Route path="/welcome" element={<WelcomePageWrapper />} />
         <Route path="/auth" element={<AuthPageWrapper setUser={setUser} />} />
         <Route path="/home" element={<HomePageWrapper user={user} setUser={setUser} />} />
         <Route path="/app" element={<CodeAnalysisPageWrapper user={user} setUser={setUser} />} />
         <Route path="/results" element={<ResultsPageWrapper user={user} />} />
-        <Route path="*" element={<Navigate to="/welcome" replace />} />
+        <Route path="/project-detail" element={<ProjectDetailPageWrapper user={user} />} />
+        <Route path="*" element={<SmartRedirect user={user} />} />
       </Routes>
     </Router>
   );

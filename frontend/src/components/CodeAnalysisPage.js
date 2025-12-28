@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import CodeChat from './CodeChat';
 import './CodeAnalysisPage.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -115,6 +116,24 @@ func main() {
 }`
 };
 
+// File extension to language mapping
+const FILE_EXTENSION_MAP = {
+  'py': 'python',
+  'js': 'javascript',
+  'jsx': 'javascript',
+  'ts': 'typescript',
+  'tsx': 'typescript',
+  'java': 'java',
+  'cpp': 'cpp',
+  'cc': 'cpp',
+  'cxx': 'cpp',
+  'c': 'c',
+  'h': 'c',
+  'hpp': 'cpp',
+  'go': 'go',
+  'rs': 'rust',
+};
+
 function CodeAnalysisPage({ user }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -124,6 +143,10 @@ function CodeAnalysisPage({ user }) {
   const [language, setLanguage] = useState(project?.language || 'python');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState('');
+  const [uploadedFileName, setUploadedFileName] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const fileInputRef = React.useRef(null);
 
   useEffect(() => {
     if (project?.language) {
@@ -183,6 +206,73 @@ function CodeAnalysisPage({ user }) {
   const handleClear = () => {
     setCode('');
     setError('');
+    setUploadedFileName('');
+  };
+
+  // File upload handlers
+  const handleFileUpload = (file) => {
+    if (!file) return;
+
+    // Check file size (max 1MB)
+    if (file.size > 1024 * 1024) {
+      setError('File size too large. Maximum size is 1MB.');
+      return;
+    }
+
+    // Get file extension and detect language
+    const fileName = file.name;
+    const extension = fileName.split('.').pop().toLowerCase();
+    const detectedLanguage = FILE_EXTENSION_MAP[extension];
+
+    if (!detectedLanguage) {
+      setError(`Unsupported file type: .${extension}. Supported: .py, .js, .ts, .java, .cpp, .c, .go, .rs`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target.result;
+      setCode(content);
+      setLanguage(detectedLanguage);
+      setUploadedFileName(fileName);
+      setError('');
+    };
+    reader.onerror = () => {
+      setError('Failed to read file. Please try again.');
+    };
+    reader.readAsText(file);
+  };
+
+  const handleFileInputChange = (e) => {
+    const file = e.target.files[0];
+    handleFileUpload(file);
+    // Reset input to allow uploading the same file again
+    e.target.value = '';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files[0];
+    handleFileUpload(file);
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const countLines = () => {
@@ -312,21 +402,41 @@ function CodeAnalysisPage({ user }) {
 
           {/* Code Editor */}
           <motion.div
-            className="code-editor-container"
+            className={`code-editor-container ${isDragging ? 'dragging' : ''}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
+            {/* Hidden file input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileInputChange}
+              accept=".py,.js,.jsx,.ts,.tsx,.java,.cpp,.cc,.cxx,.c,.h,.hpp,.go,.rs"
+              style={{ display: 'none' }}
+            />
+
             <div className="editor-header">
               <div className="editor-tabs">
                 <div className="tab active">
                   <span className="tab-icon">
                     {LANGUAGES.find(l => l.id === language)?.icon || '📄'}
                   </span>
-                  <span>code.{language === 'javascript' ? 'js' : language === 'typescript' ? 'ts' : language === 'python' ? 'py' : language}</span>
+                  <span>{uploadedFileName || `code.${language === 'javascript' ? 'js' : language === 'typescript' ? 'ts' : language === 'python' ? 'py' : language}`}</span>
                 </div>
               </div>
               <div className="editor-actions-top">
+                <button className="action-btn upload-btn" onClick={handleUploadClick} title="Upload code file">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Upload
+                </button>
                 <button className="action-btn" onClick={handleLoadSample} title="Load sample code">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -344,10 +454,34 @@ function CodeAnalysisPage({ user }) {
                   </svg>
                   Clear
                 </button>
+                <button
+                  className="action-btn chat-btn"
+                  onClick={() => setIsChatOpen(true)}
+                  title="Chat with your code"
+                  disabled={!code.trim()}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  Chat
+                </button>
               </div>
             </div>
 
             <div className="editor-body">
+              {/* Drag overlay */}
+              {isDragging && (
+                <div className="drag-overlay">
+                  <div className="drag-content">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <span>Drop your code file here</span>
+                  </div>
+                </div>
+              )}
               <div className="line-numbers">
                 {Array.from({ length: Math.max(countLines(), 20) }, (_, i) => (
                   <div key={i + 1} className="line-number">{i + 1}</div>
@@ -356,8 +490,11 @@ function CodeAnalysisPage({ user }) {
               <textarea
                 className="code-textarea"
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder={`// Paste your ${LANGUAGES.find(l => l.id === language)?.name || 'code'} here...\n\n// Or click 'Sample' to load example code`}
+                onChange={(e) => {
+                  setCode(e.target.value);
+                  if (uploadedFileName) setUploadedFileName('');
+                }}
+                placeholder={`// Paste your ${LANGUAGES.find(l => l.id === language)?.name || 'code'} here...\n\n// Or click 'Upload' to select a file\n// Or drag & drop a code file`}
                 spellCheck={false}
               />
             </div>
@@ -367,6 +504,18 @@ function CodeAnalysisPage({ user }) {
                 <span>{countLines()} lines</span>
                 <span className="divider">|</span>
                 <span>{countCharacters()} characters</span>
+                {uploadedFileName && (
+                  <>
+                    <span className="divider">|</span>
+                    <span className="file-indicator">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14,2 14,8 20,8" />
+                      </svg>
+                      {uploadedFileName}
+                    </span>
+                  </>
+                )}
               </div>
               <div className="editor-language">
                 {LANGUAGES.find(l => l.id === language)?.name || language}
@@ -408,6 +557,14 @@ function CodeAnalysisPage({ user }) {
       <footer className="analysis-footer">
         <p>LogicGuard - AI-Powered Code Analysis</p>
       </footer>
+
+      {/* Chat with Code Panel */}
+      <CodeChat
+        code={code}
+        language={language}
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+      />
     </div>
   );
 }

@@ -9,7 +9,11 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 function HomePage({ user, setUser }) {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('home');
+  // Persist active tab in localStorage
+  const [activeTab, setActiveTab] = useState(() => {
+    const savedTab = localStorage.getItem('logicguard_active_tab');
+    return savedTab || 'home';
+  });
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [projects, setProjects] = useState([]);
   const [archivedProjects, setArchivedProjects] = useState([]);
@@ -19,6 +23,13 @@ function HomePage({ user, setUser }) {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
+
+  // AI Generate tab state
+  const [generatePrompt, setGeneratePrompt] = useState('');
+  const [generateLanguage, setGenerateLanguage] = useState('python');
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState('');
 
   // Check if user has visited before
   useEffect(() => {
@@ -30,6 +41,11 @@ function HomePage({ user, setUser }) {
       setIsReturningUser(false);
     }
   }, []);
+
+  // Save active tab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('logicguard_active_tab', activeTab);
+  }, [activeTab]);
 
   // Fetch projects when user is available or when projects tab is active
   useEffect(() => {
@@ -174,6 +190,180 @@ function HomePage({ user, setUser }) {
     setOpenMenuId(openMenuId === projectId ? null : projectId);
   };
 
+  const getScoreLabel = (score) => {
+    if (score >= 90) return 'Excellent';
+    if (score >= 80) return 'Good';
+    if (score >= 70) return 'Decent';
+    if (score >= 60) return 'Fair';
+    return 'Needs Work';
+  };
+
+  const handleDownloadReport = async (e, projectId, projectName) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+
+    try {
+      // Fetch the latest analysis for this project
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/analyses`);
+      const data = await response.json();
+
+      if (!data.success || !data.data.analyses || data.data.analyses.length === 0) {
+        alert('No analyses found for this project.');
+        return;
+      }
+
+      const analysis = data.data.analyses[0]; // Get the most recent analysis
+      const project = data.data.project;
+      const reportDate = new Date().toLocaleString();
+
+      let reportContent = `
+================================================================================
+                         LOGICGUARD CODE ANALYSIS REPORT
+================================================================================
+
+Project: ${project.name}
+Language: ${analysis.language || project.language || 'Unknown'}
+Date: ${reportDate}
+Score: ${analysis.score}/100 (${getScoreLabel(analysis.score)})
+
+--------------------------------------------------------------------------------
+                                   SUMMARY
+--------------------------------------------------------------------------------
+${analysis.summary || 'No summary available.'}
+
+`;
+
+      // Add Issues section
+      if (analysis.bugs && analysis.bugs.length > 0) {
+        reportContent += `
+--------------------------------------------------------------------------------
+                              ISSUES FOUND (${analysis.bugs.length})
+--------------------------------------------------------------------------------
+`;
+        analysis.bugs.forEach((bug, index) => {
+          reportContent += `
+${index + 1}. [${bug.severity?.toUpperCase() || 'ISSUE'}] ${bug.title || bug.type}
+   ${bug.line ? `Line: ${bug.line}` : ''}
+   Description: ${bug.description}
+   ${bug.suggestion ? `Suggestion: ${bug.suggestion}` : ''}
+`;
+        });
+      }
+
+      // Add Optimizations section
+      if (analysis.optimizations && analysis.optimizations.length > 0) {
+        reportContent += `
+--------------------------------------------------------------------------------
+                        OPTIMIZATION SUGGESTIONS (${analysis.optimizations.length})
+--------------------------------------------------------------------------------
+`;
+        analysis.optimizations.forEach((opt, index) => {
+          reportContent += `
+${index + 1}. ${opt.title}
+   ${opt.category ? `Category: ${opt.category}` : ''}
+   ${opt.description}
+   ${opt.example ? `Example:\n   ${opt.example}` : ''}
+`;
+        });
+      }
+
+      // Add Positives section
+      if (analysis.positives && analysis.positives.length > 0) {
+        reportContent += `
+--------------------------------------------------------------------------------
+                           WHAT YOU DID WELL (${analysis.positives.length})
+--------------------------------------------------------------------------------
+`;
+        analysis.positives.forEach((positive, index) => {
+          const text = typeof positive === 'string' ? positive : positive.description;
+          reportContent += `${index + 1}. ${text}\n`;
+        });
+      }
+
+      // Add Code section
+      if (analysis.code_snippet) {
+        reportContent += `
+--------------------------------------------------------------------------------
+                               ANALYZED CODE
+--------------------------------------------------------------------------------
+${analysis.code_snippet}
+`;
+      }
+
+      reportContent += `
+================================================================================
+                    Generated by LogicGuard - AI-Powered Code Analysis
+================================================================================
+`;
+
+      // Create and download the file
+      const blob = new Blob([reportContent], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `LogicGuard_Report_${projectName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download report:', error);
+      alert('Failed to download report. Please try again.');
+    }
+  };
+
+  // AI Code Generation handler
+  const handleGenerateCode = async () => {
+    if (!generatePrompt.trim()) {
+      setGenerateError('Please describe what code you want to generate');
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerateError('');
+    setGeneratedCode('');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: generatePrompt,
+          language: generateLanguage
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setGeneratedCode(data.data.code);
+      } else {
+        setGenerateError(data.error || 'Failed to generate code. Please try again.');
+      }
+    } catch (error) {
+      setGenerateError('Network error. Please check your connection and try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Copy generated code to clipboard
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(generatedCode);
+  };
+
+  // Use generated code in analysis
+  const handleUseInAnalysis = () => {
+    navigate('/analyze', {
+      state: {
+        code: generatedCode,
+        language: generateLanguage
+      }
+    });
+  };
+
   // Filter projects based on search query
   const filteredProjects = projects.filter(project =>
     project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -214,6 +404,34 @@ function HomePage({ user, setUser }) {
     setProjects([newProject, ...projects]);
     // Navigate to the app with the project
     navigate('/app', { state: { project: newProject } });
+  };
+
+  const handleViewHistory = async (analysisId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/history/${analysisId}`);
+      const data = await response.json();
+      if (data.success) {
+        const analysis = data.data;
+        navigate('/results', {
+          state: {
+            results: {
+              score: analysis.score,
+              summary: analysis.summary,
+              bugs: analysis.bugs,
+              optimizations: analysis.optimizations,
+              positives: analysis.positives,
+              metrics: analysis.metrics
+            },
+            code: analysis.code_snippet,
+            language: analysis.language,
+            analysisId: analysis.id,
+            viewOnly: true
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch analysis details:', error);
+    }
   };
 
   // Helper function to format date
@@ -321,6 +539,17 @@ function HomePage({ user, setUser }) {
                 <polyline points="12,6 12,12 16,14" />
               </svg>
               History
+            </button>
+            <button
+              className={`navbar-tab ${activeTab === 'generate' ? 'active' : ''}`}
+              onClick={() => setActiveTab('generate')}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
+              </svg>
+              AI Generate
             </button>
             <button
               className={`navbar-tab ${activeTab === 'archived' ? 'active' : ''}`}
@@ -501,7 +730,7 @@ function HomePage({ user, setUser }) {
                   key={project.id}
                   className="project-card"
                   whileHover={{ scale: 1.02 }}
-                  onClick={() => navigate('/app', { state: { project } })}
+                  onClick={() => navigate('/project-detail', { state: { project } })}
                 >
                   <div className={`project-icon ${project.language || 'python'}`}>
                     {getLanguageIcon(project.language)}
@@ -528,6 +757,17 @@ function HomePage({ user, setUser }) {
                     </button>
                     {openMenuId === project.id && (
                       <div className="project-menu-dropdown">
+                        <button
+                          className="menu-item"
+                          onClick={(e) => handleDownloadReport(e, project.id, project.name)}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7,10 12,15 17,10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                          </svg>
+                          Download Report
+                        </button>
                         <button
                           className="menu-item"
                           onClick={(e) => {
@@ -605,7 +845,13 @@ function HomePage({ user, setUser }) {
             <div className="history-list">
               {/* Render filtered history from database */}
               {filteredHistory.map((item) => (
-                <div key={item.id} className="history-item">
+                <motion.div
+                  key={item.id}
+                  className="history-item clickable"
+                  onClick={() => handleViewHistory(item.id)}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                >
                   <div className="history-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -616,7 +862,7 @@ function HomePage({ user, setUser }) {
                     </svg>
                   </div>
                   <div className="history-info">
-                    <h4>{item.code_snippet}</h4>
+                    <h4>{item.summary || item.code_snippet}</h4>
                     <p>{item.language} - {formatDate(item.created_at)}</p>
                   </div>
                   <div className="history-score">
@@ -624,7 +870,12 @@ function HomePage({ user, setUser }) {
                       {item.score || 'N/A'}
                     </span>
                   </div>
-                </div>
+                  <div className="history-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="9,18 15,12 9,6" />
+                    </svg>
+                  </div>
+                </motion.div>
               ))}
 
               {/* Empty state when no history and not loading */}
@@ -744,6 +995,148 @@ function HomePage({ user, setUser }) {
                   </svg>
                   <p>No archived projects. Projects you archive will appear here.</p>
                 </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+{/* AI GENERATE TAB */}
+        {activeTab === 'generate' && (
+          <motion.div
+            className="tab-content"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="content-header">
+              <h1>AI Code Generator</h1>
+              <p>Describe what you need and let AI generate the code for you</p>
+            </div>
+
+            <div className="generate-container">
+              {/* Language Selector */}
+              <div className="generate-language-selector">
+                <label>Programming Language:</label>
+                <div className="language-buttons">
+                  {[
+                    { id: 'python', name: 'Python', icon: '🐍' },
+                    { id: 'javascript', name: 'JavaScript', icon: '📜' },
+                    { id: 'typescript', name: 'TypeScript', icon: '💙' },
+                    { id: 'java', name: 'Java', icon: '☕' },
+                    { id: 'cpp', name: 'C++', icon: '⚡' },
+                    { id: 'c', name: 'C', icon: '🔧' },
+                    { id: 'go', name: 'Go', icon: '🐹' },
+                    { id: 'rust', name: 'Rust', icon: '🦀' },
+                  ].map((lang) => (
+                    <button
+                      key={lang.id}
+                      className={`lang-btn ${generateLanguage === lang.id ? 'active' : ''}`}
+                      onClick={() => setGenerateLanguage(lang.id)}
+                    >
+                      <span className="lang-icon">{lang.icon}</span>
+                      <span className="lang-name">{lang.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Prompt Input */}
+              <div className="generate-prompt-section">
+                <label>Describe what you want to build:</label>
+                <textarea
+                  className="generate-prompt-input"
+                  value={generatePrompt}
+                  onChange={(e) => setGeneratePrompt(e.target.value)}
+                  placeholder="Example: Create a function that sorts an array of objects by a specific property, handles edge cases, and returns the sorted array..."
+                  rows={4}
+                />
+              </div>
+
+              {/* Example Prompts */}
+              <div className="example-prompts">
+                <span className="example-label">Try these:</span>
+                <div className="example-chips">
+                  <button onClick={() => setGeneratePrompt('Create a function to validate email addresses')}>
+                    Email validator
+                  </button>
+                  <button onClick={() => setGeneratePrompt('Create a REST API endpoint for user authentication with JWT')}>
+                    Auth API
+                  </button>
+                  <button onClick={() => setGeneratePrompt('Create a function to fetch data from an API with error handling and retry logic')}>
+                    API fetcher
+                  </button>
+                  <button onClick={() => setGeneratePrompt('Create a binary search algorithm that works with any comparable type')}>
+                    Binary search
+                  </button>
+                </div>
+              </div>
+
+              {/* Error Message */}
+              {generateError && (
+                <div className="generate-error">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                  {generateError}
+                </div>
+              )}
+
+              {/* Generate Button */}
+              <button
+                className="generate-btn"
+                onClick={handleGenerateCode}
+                disabled={isGenerating || !generatePrompt.trim()}
+              >
+                {isGenerating ? (
+                  <>
+                    <span className="spinner"></span>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                      <path d="M2 17l10 5 10-5" />
+                      <path d="M2 12l10 5 10-5" />
+                    </svg>
+                    Generate Code
+                  </>
+                )}
+              </button>
+
+              {/* Generated Code Output */}
+              {generatedCode && (
+                <motion.div
+                  className="generated-code-section"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <div className="generated-code-header">
+                    <h3>Generated Code</h3>
+                    <div className="generated-code-actions">
+                      <button className="code-action-btn" onClick={handleCopyCode}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        Copy
+                      </button>
+                      <button className="code-action-btn primary" onClick={handleUseInAnalysis}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14,2 14,8 20,8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                        </svg>
+                        Analyze Code
+                      </button>
+                    </div>
+                  </div>
+                  <pre className="generated-code-block">
+                    <code>{generatedCode}</code>
+                  </pre>
+                </motion.div>
               )}
             </div>
           </motion.div>

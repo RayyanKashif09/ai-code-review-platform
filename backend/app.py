@@ -781,6 +781,237 @@ def get_analysis_detail(analysis_id):
     })
 
 
+@app.route('/api/projects/<int:project_id>/analyses', methods=['GET'])
+def get_project_analyses(project_id):
+    """Get all analyses for a specific project."""
+    project = Project.query.get(project_id)
+    if not project:
+        return jsonify({"success": False, "error": "Project not found"}), 404
+
+    analyses = AnalysisHistory.query.filter_by(project_id=project_id)\
+        .order_by(AnalysisHistory.created_at.desc())\
+        .all()
+
+    # Return full code snippet for each analysis
+    results = []
+    for analysis in analyses:
+        result = analysis.to_dict()
+        result['code_snippet'] = analysis.code_snippet
+        results.append(result)
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "project": project.to_dict(),
+            "analyses": results
+        }
+    })
+
+
+# ==================== Chat with Code Endpoint ====================
+
+CODE_CHAT_PROMPT = """You are an expert code assistant helping users understand their code. The user has uploaded the following {language} code and is asking a question about it.
+
+CODE:
+```{language}
+{code}
+```
+
+USER'S QUESTION: {question}
+
+Provide a helpful, clear, and beginner-friendly response. If the question is about:
+- Performance: Explain what might be slow and why
+- Bugs: Identify potential issues and explain them
+- Understanding: Explain how the code works
+- Improvements: Suggest specific improvements
+
+Keep your response concise but thorough. Use code examples when helpful.
+Do NOT return JSON - just provide a natural language response that directly answers the user's question."""
+
+
+@app.route('/api/chat', methods=['POST'])
+def chat_with_code():
+    """
+    Chat endpoint for asking questions about code.
+    Uses AI to answer questions based on the provided code context.
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "No data provided"
+            }), 400
+
+        code = data.get('code', '').strip()
+        language = data.get('language', 'python').lower()
+        question = data.get('question', '').strip()
+        chat_history = data.get('chat_history', [])  # Previous messages for context
+
+        if not code:
+            return jsonify({
+                "success": False,
+                "error": "No code provided"
+            }), 400
+
+        if not question:
+            return jsonify({
+                "success": False,
+                "error": "No question provided"
+            }), 400
+
+        # Check if API key is configured
+        if not os.getenv('GROQ_API_KEY'):
+            return jsonify({
+                "success": False,
+                "error": "Groq API key not configured"
+            }), 500
+
+        # Build messages for chat completion
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert code assistant. Provide helpful, clear, and beginner-friendly responses about code. Be concise but thorough."
+            }
+        ]
+
+        # Add chat history for context (last 5 exchanges to keep token count reasonable)
+        for msg in chat_history[-10:]:
+            messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+
+        # Add current question with code context
+        prompt = CODE_CHAT_PROMPT.format(language=language, code=code, question=question)
+        messages.append({
+            "role": "user",
+            "content": prompt
+        })
+
+        # Call Groq API
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            temperature=0.5,
+            max_tokens=1500
+        )
+
+        answer = response.choices[0].message.content.strip()
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "answer": answer,
+                "question": question
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ==================== AI Code Generation Endpoint ====================
+
+CODE_GENERATION_PROMPT = """You are an expert programmer. Generate clean, well-commented, production-ready code based on the user's request.
+
+USER'S REQUEST: {prompt}
+
+PROGRAMMING LANGUAGE: {language}
+
+Requirements:
+1. Write clean, readable, and well-structured code
+2. Include helpful comments explaining key parts
+3. Follow best practices for the specified language
+4. Handle edge cases appropriately
+5. Make the code production-ready
+
+Return ONLY the code without any additional explanation or markdown formatting. The code should be ready to copy and use directly."""
+
+
+@app.route('/api/generate', methods=['POST'])
+def generate_code():
+    """
+    AI Code Generation endpoint.
+    Generates code based on user's natural language prompt.
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "No data provided"
+            }), 400
+
+        prompt = data.get('prompt', '').strip()
+        language = data.get('language', 'python').lower()
+
+        if not prompt:
+            return jsonify({
+                "success": False,
+                "error": "No prompt provided"
+            }), 400
+
+        # Check if API key is configured
+        if not os.getenv('GROQ_API_KEY'):
+            return jsonify({
+                "success": False,
+                "error": "Groq API key not configured"
+            }), 500
+
+        # Build the generation prompt
+        generation_prompt = CODE_GENERATION_PROMPT.format(prompt=prompt, language=language)
+
+        # Call Groq API
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are an expert {language} programmer. Generate clean, production-ready code. Return ONLY code without markdown formatting or explanations."
+                },
+                {
+                    "role": "user",
+                    "content": generation_prompt
+                }
+            ],
+            temperature=0.3,
+            max_tokens=2000
+        )
+
+        generated_code = response.choices[0].message.content.strip()
+
+        # Remove markdown code blocks if present
+        if generated_code.startswith('```'):
+            lines = generated_code.split('\n')
+            # Remove first line (```language) and last line (```)
+            if lines[-1].strip() == '```':
+                lines = lines[1:-1]
+            else:
+                lines = lines[1:]
+            generated_code = '\n'.join(lines)
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "code": generated_code,
+                "language": language,
+                "prompt": prompt
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
 # ==================== Settings Endpoints ====================
 
 @app.route('/api/settings', methods=['GET'])
