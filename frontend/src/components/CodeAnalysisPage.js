@@ -138,9 +138,11 @@ function CodeAnalysisPage({ user }) {
   const navigate = useNavigate();
   const location = useLocation();
   const project = location.state?.project;
+  const initialCode = location.state?.code || '';
+  const initialLanguage = location.state?.language || project?.language || 'python';
 
-  const [code, setCode] = useState('');
-  const [language, setLanguage] = useState(project?.language || 'python');
+  const [code, setCode] = useState(initialCode);
+  const [language, setLanguage] = useState(initialLanguage);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState('');
   const [uploadedFileName, setUploadedFileName] = useState('');
@@ -149,10 +151,16 @@ function CodeAnalysisPage({ user }) {
   const fileInputRef = React.useRef(null);
 
   useEffect(() => {
-    if (project?.language) {
+    // Update code if passed from navigation state (e.g., from AI Generate)
+    if (location.state?.code) {
+      setCode(location.state.code);
+    }
+    if (location.state?.language) {
+      setLanguage(location.state.language);
+    } else if (project?.language) {
       setLanguage(project.language);
     }
-  }, [project]);
+  }, [location.state, project]);
 
   const handleAnalyze = async () => {
     if (!code.trim()) {

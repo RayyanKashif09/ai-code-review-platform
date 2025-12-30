@@ -664,8 +664,9 @@
 
 .language-buttons .lang-btn.active {
   border-color: #228B22;
-  background: linear-gradient(135deg, #228B22 0%, #2E8B57 100%);
-  color: white;
+  background: white;
+  color: #333;
+  box-shadow: 0 0 0 2px rgba(34, 139, 34, 0.2);
 }
 
 .language-buttons .lang-icon {
@@ -851,6 +852,12 @@
 .code-action-btn:hover {
   border-color: #228B22;
   color: #228B22;
+}
+
+.code-action-btn.copied {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
 }
 
 .code-action-btn.primary {

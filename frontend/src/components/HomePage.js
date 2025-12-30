@@ -24,12 +24,32 @@ function HomePage({ user, setUser }) {
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
 
-  // AI Generate tab state
-  const [generatePrompt, setGeneratePrompt] = useState('');
-  const [generateLanguage, setGenerateLanguage] = useState('python');
-  const [generatedCode, setGeneratedCode] = useState('');
+  // AI Generate tab state - persist to localStorage
+  const [generatePrompt, setGeneratePrompt] = useState(() => {
+    return localStorage.getItem('logicguard_generate_prompt') || '';
+  });
+  const [generateLanguage, setGenerateLanguage] = useState(() => {
+    return localStorage.getItem('logicguard_generate_language') || 'python';
+  });
+  const [generatedCode, setGeneratedCode] = useState(() => {
+    return localStorage.getItem('logicguard_generated_code') || '';
+  });
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  // Persist AI Generate state to localStorage
+  useEffect(() => {
+    localStorage.setItem('logicguard_generate_prompt', generatePrompt);
+  }, [generatePrompt]);
+
+  useEffect(() => {
+    localStorage.setItem('logicguard_generate_language', generateLanguage);
+  }, [generateLanguage]);
+
+  useEffect(() => {
+    localStorage.setItem('logicguard_generated_code', generatedCode);
+  }, [generatedCode]);
 
   // Check if user has visited before
   useEffect(() => {
@@ -350,13 +370,33 @@ ${analysis.code_snippet}
   };
 
   // Copy generated code to clipboard
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(generatedCode);
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedCode);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = generatedCode;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } catch (e) {
+        console.error('Failed to copy:', e);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   // Use generated code in analysis
   const handleUseInAnalysis = () => {
-    navigate('/analyze', {
+    navigate('/app', {
       state: {
         code: generatedCode,
         language: generateLanguage
@@ -1115,12 +1155,23 @@ ${analysis.code_snippet}
                   <div className="generated-code-header">
                     <h3>Generated Code</h3>
                     <div className="generated-code-actions">
-                      <button className="code-action-btn" onClick={handleCopyCode}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                        Copy
+                      <button className={`code-action-btn ${copySuccess ? 'copied' : ''}`} onClick={handleCopyCode}>
+                        {copySuccess ? (
+                          <>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                            Copy
+                          </>
+                        )}
                       </button>
                       <button className="code-action-btn primary" onClick={handleUseInAnalysis}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

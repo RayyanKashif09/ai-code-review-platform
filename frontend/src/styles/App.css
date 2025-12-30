@@ -427,6 +427,7 @@ body {
 .bug-title {
   font-weight: 600;
   font-size: 0.875rem;
+  color: white;
 }
 
 .bug-line {
@@ -468,11 +469,12 @@ body {
 .optimization-item h4 {
   font-size: 0.875rem;
   margin-bottom: 0.5rem;
+  color: white;
 }
 
 .optimization-item p {
   font-size: 0.8125rem;
-  color: var(--text-secondary);
+  color: #e0e0e0;
 }
 
 .code-example {

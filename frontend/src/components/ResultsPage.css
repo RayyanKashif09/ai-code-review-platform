@@ -484,7 +484,7 @@
 .bug-title {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #333;
+  color: white;
 }
 
 .bug-line {
@@ -552,7 +552,7 @@
 
 .optimization-item h4 {
   font-size: 0.9rem;
-  color: #333;
+  color: white;
   margin-bottom: 0.5rem;
   font-weight: 600;
 }
